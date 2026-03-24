@@ -264,6 +264,7 @@
 
     function updateVolume() {
         if(player && typeof player.setVolume === 'function'){
+            player.unMute(); // 確保沒有被靜音
             player.setVolume(currentVolume);
             document.getElementById('volDisplay').innerText = currentVolume;
         }
