@@ -175,10 +175,10 @@
     // -- 互動參數微調區 --
     const accelThreshold = 2.0;       // 觸發音量改變的加速度閾值 (m/s²)
     const shakeVolumeStep = 5;        // 每次晃動增減的音量幅度
-    const shakeInterval = 200;        // 限制每 200ms 處理一次晃動，避免數值暴衝
+    const shakeInterval = 50;        // 限制每 200ms 處理一次晃動，避免數值暴衝
     const delayBeforeReturn = 1500;   // 停止晃動後，經過幾毫秒開始恢復預設音量 (1500 = 1.5秒)
     const returnSpeed = 2;            // 恢復期間，每次調整的音量幅度
-    const returnInterval = 200;       // 恢復期間，每幾毫秒調整一次 (數值越小恢復越平滑)
+    const returnInterval = 100;       // 恢復期間，每幾毫秒調整一次 (數值越小恢復越平滑)
     // -------------------
 
     function requestSensorPermission() {
