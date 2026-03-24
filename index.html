@@ -136,121 +136,121 @@
 </div>
 
 <script>
-    // --- 進階音訊控制變數 ---
-let audioCtx;
-let gainNode;
-let source;
-const defaultGain = 0.4; // 40% 音量對應 0.4 倍增益
-let currentGain = defaultGain;
+        // --- 進階音訊控制變數 ---
+    let audioCtx;
+    let gainNode;
+    let source;
+    const defaultGain = 0.4; // 40% 音量對應 0.4 倍增益
+    let currentGain = defaultGain;
 
-// 1. YouTube API 初始化 (保持不變)
-let player;
-const tag = document.createElement('script');
-tag.src = "https://www.youtube.com/iframe_api";
-const firstScriptTag = document.getElementsByTagName('script')[0];
-firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    // 1. YouTube API 初始化 (保持不變)
+    let player;
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-function onYouTubeIframeAPIReady() {
-    player = new YT.Player('player', {
-        videoId: 'k58QQMN9DEY',
-        playerVars: { 
-            'playsinline': 1,
-            'origin': window.location.origin,
-            'enablejsapi': 1
-        },
-        events: { 'onReady': onPlayerReady }
-    });
-}
-
-function onPlayerReady(event) {
-    player.setVolume(100); // 讓 YouTube 內部音量永遠保持最大，由我們外部控制
-}
-
-// 2. 啟動 Web Audio API (關鍵步驟)
-function initAudioContext() {
-    if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        gainNode = audioCtx.createGain();
-        gainNode.gain.value = currentGain;
-
-        // 嘗試從 iframe 擷取聲音 (注意：部分瀏覽器因跨域政策可能限制此操作)
-        // 若 iframe 方案受限，我們改用 setVolume 強力震盪法
-        gainNode.connect(audioCtx.destination);
-    }
-}
-
-// --- 互動參數微調區 (極致明顯版) ---
-const accelThreshold = 1.0;   // 門檻降更低，輕晃就有反應
-const volumeJump = 20;        // 晃一下直接跳 20%
-const decayRate = 5;          // 回歸速度加快
-const maxVol = 100;
-const minVol = 5;             // 負向晃動時讓它幾乎靜音，對比才強
-// ------------------------------
-
-function requestSensorPermission() {
-    // 必須在使用者點擊時啟動 AudioContext
-    initAudioContext();
-    
-    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-        DeviceMotionEvent.requestPermission().then(state => {
-            if (state === 'granted') startLogic();
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            videoId: 'k58QQMN9DEY',
+            playerVars: { 
+                'playsinline': 1,
+                'origin': window.location.origin,
+                'enablejsapi': 1
+            },
+            events: { 'onReady': onPlayerReady }
         });
-    } else {
-        startLogic();
     }
-    player.playVideo();
-}
 
-function startLogic() {
-    window.addEventListener('devicemotion', handleMotion, true);
-    document.getElementById('startBtn').style.display = 'none';
-    
-    // 強力回歸監控
-    setInterval(() => {
-        const now = Date.now();
-        if (now - lastShakeTime > 500) { // 0.5秒沒晃就回歸
-            if (currentVolume > 40) currentVolume -= decayRate;
-            if (currentVolume < 40) currentVolume += decayRate;
+    function onPlayerReady(event) {
+        player.setVolume(100); // 讓 YouTube 內部音量永遠保持最大，由我們外部控制
+    }
+
+    // 2. 啟動 Web Audio API (關鍵步驟)
+    function initAudioContext() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            gainNode = audioCtx.createGain();
+            gainNode.gain.value = currentGain;
+
+            // 嘗試從 iframe 擷取聲音 (注意：部分瀏覽器因跨域政策可能限制此操作)
+            // 若 iframe 方案受限，我們改用 setVolume 強力震盪法
+            gainNode.connect(audioCtx.destination);
+        }
+    }
+
+    // --- 互動參數微調區 (極致明顯版) ---
+    const accelThreshold = 1.0;   // 門檻降更低，輕晃就有反應
+    const volumeJump = 20;        // 晃一下直接跳 20%
+    const decayRate = 5;          // 回歸速度加快
+    const maxVol = 100;
+    const minVol = 5;             // 負向晃動時讓它幾乎靜音，對比才強
+    // ------------------------------
+
+    function requestSensorPermission() {
+        // 必須在使用者點擊時啟動 AudioContext
+        initAudioContext();
+        
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            DeviceMotionEvent.requestPermission().then(state => {
+                if (state === 'granted') startLogic();
+            });
+        } else {
+            startLogic();
+        }
+        player.playVideo();
+    }
+
+    function startLogic() {
+        window.addEventListener('devicemotion', handleMotion, true);
+        document.getElementById('startBtn').style.display = 'none';
+        
+        // 強力回歸監控
+        setInterval(() => {
+            const now = Date.now();
+            if (now - lastShakeTime > 500) { // 0.5秒沒晃就回歸
+                if (currentVolume > 40) currentVolume -= decayRate;
+                if (currentVolume < 40) currentVolume += decayRate;
+                applyVolume();
+            }
+        }, 100);
+    }
+
+    let lastShakeTime = Date.now();
+    let currentVolume = 40;
+
+    function handleMotion(event) {
+        const acc = event.acceleration;
+        if (!acc || acc.y === null) return;
+
+        // UI 數值更新
+        document.getElementById('accX').innerText = acc.x.toFixed(2);
+        document.getElementById('accY').innerText = acc.y.toFixed(2);
+        document.getElementById('accZ').innerText = acc.z.toFixed(2);
+
+        // 判斷晃動
+        if (Math.abs(acc.y) > accelThreshold) {
+            lastShakeTime = Date.now();
+            if (acc.y > 0) {
+                currentVolume = Math.min(maxVol, currentVolume + volumeJump);
+            } else {
+                currentVolume = Math.max(minVol, currentVolume - volumeJump);
+            }
             applyVolume();
         }
-    }, 100);
-}
+    }
 
-let lastShakeTime = Date.now();
-let currentVolume = 40;
-
-function handleMotion(event) {
-    const acc = event.acceleration;
-    if (!acc || acc.y === null) return;
-
-    // UI 數值更新
-    document.getElementById('accX').innerText = acc.x.toFixed(2);
-    document.getElementById('accY').innerText = acc.y.toFixed(2);
-    document.getElementById('accZ').innerText = acc.z.toFixed(2);
-
-    // 判斷晃動
-    if (Math.abs(acc.y) > accelThreshold) {
-        lastShakeTime = Date.now();
-        if (acc.y > 0) {
-            currentVolume = Math.min(maxVol, currentVolume + volumeJump);
-        } else {
-            currentVolume = Math.max(minVol, currentVolume - volumeJump);
+    function applyVolume() {
+        if (player && player.setVolume) {
+            // 強制執行：在某些手機上，快速連續設定不同數值能「衝破」系統限制
+            player.setVolume(currentVolume); 
+            document.getElementById('volDisplay').innerText = Math.round(currentVolume);
+            
+            // 視覺回饋：讓 UI 跟著音量縮放，幫助確認程式有在跑
+            const scale = 1 + (currentVolume - 40) / 100;
+            document.getElementById('player').style.transform = `scale(${scale})`;
         }
-        applyVolume();
     }
-}
-
-function applyVolume() {
-    if (player && player.setVolume) {
-        // 強制執行：在某些手機上，快速連續設定不同數值能「衝破」系統限制
-        player.setVolume(currentVolume); 
-        document.getElementById('volDisplay').innerText = Math.round(currentVolume);
-        
-        // 視覺回饋：讓 UI 跟著音量縮放，幫助確認程式有在跑
-        const scale = 1 + (currentVolume - 40) / 100;
-        document.getElementById('player').style.transform = `scale(${scale})`;
-    }
-}
 </script>
 </body>
 </html>
