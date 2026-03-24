@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>體感互動 YouTube 播放器</title>
+    <style>
+        :root {
+            --bg-color: #f7f9fc;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --accent: #4a90e2;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+        }
+        /* 影片容器：維持 16:9 比例 */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%; 
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .video-wrapper iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        /* 控制面板 */
+        .controls-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:active { background-color: #357abd; }
+        
+        .start-btn {
+            width: 100%;
+            background-color: #27ae60;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        
+        /* 數據顯示區 */
+        .sensor-data {
+            font-family: monospace;
+            background: #eee;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .highlight {
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <button id="startBtn" class="start-btn" onclick="requestSensorPermission()">點擊以啟用手機加速度計</button>
+
+    <div class="video-wrapper">
+        <div id="player"></div>
+    </div>
+
+    <div class="controls-card">
+        <div class="input-group">
+            <input type="text" id="urlInput" placeholder="貼上 YouTube 網址..." value="https://www.youtube.com/watch?v=k58QQMN9DEY">
+            <button onclick="loadNewVideo()">送出</button>
+        </div>
+
+        <div class="sensor-data">
+            <div>目前音量: <span id="volDisplay" class="highlight">40</span>%</div>
+            <hr style="border:0; border-top:1px solid #ddd; margin: 10px 0;">
+            <div>線性加速度計 (扣除重力):</div>
+            <div>X 軸 (左右): <span id="accX">0.00</span></div>
+            <div>Y 軸 (上下): <span id="accY">0.00</span></div>
+            <div>Z 軸 (前後): <span id="accZ">0.00</span></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. YouTube IFrame API 初始化
+    let player;
+    let currentVolume = 40;
+    
+    // 載入 YouTube API 腳本
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            videoId: 'k58QQMN9DEY',
+            playerVars: { 'playsinline': 1 },
+            events: {
+                'onReady': onPlayerReady
+            }
+        });
+    }
+
+    function onPlayerReady(event) {
+        player.setVolume(currentVolume);
+    }
+
+    // 更換影片
+    function loadNewVideo() {
+        const url = document.getElementById('urlInput').value;
+        // 使用正則表達式擷取 YouTube Video ID
+        const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+        if (match && match[1]) {
+            player.loadVideoById(match[1]);
+        } else {
+            alert('無法辨識的 YouTube 網址格式');
+        }
+    }
+
+    // 2. 感測器邏輯與權限請求
+    let lastUpdateTime = 0;
+    const updateInterval = 200; // 限制每 200 毫秒才更新一次音量，避免數值跳動過快
+    const accelThreshold = 2.0; // 觸發音量改變的加速度閾值 (m/s²)
+
+    function requestSensorPermission() {
+        // 針對 iOS 13+ 要求使用者授權 DeviceMotion
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            DeviceMotionEvent.requestPermission()
+                .then(permissionState => {
+                    if (permissionState === 'granted') {
+                        window.addEventListener('devicemotion', handleMotion, true);
+                        document.getElementById('startBtn').style.display = 'none';
+                    } else {
+                        alert('需要感測器權限才能使用體感功能');
+                    }
+                })
+                .catch(console.error);
+        } else {
+            // Android 或非 iOS 13+ 裝置
+            window.addEventListener('devicemotion', handleMotion, true);
+            document.getElementById('startBtn').style.display = 'none';
+        }
+        
+        // 如果影片還沒播放，順便觸發播放 (繞過手機瀏覽器的自動播放限制)
+        if (player && player.getPlayerState() !== 1) {
+            player.playVideo();
+        }
+    }
+
+    // 處理感測器數值
+    function handleMotion(event) {
+        // 使用 acceleration (線性加速度，已扣除重力因素)
+        const acc = event.acceleration; 
+        if (!acc || acc.y === null) return;
+
+        // 更新介面顯示
+        document.getElementById('accX').innerText = acc.x.toFixed(2);
+        document.getElementById('accY').innerText = acc.y.toFixed(2);
+        document.getElementById('accZ').innerText = acc.z.toFixed(2);
+
+        // 控制音量邏輯
+        const now = Date.now();
+        if (now - lastUpdateTime > updateInterval) {
+            // 這裡使用 Y 軸 (手機直立時的上下晃動) 作為判斷基準
+            // 你也可以根據實際測試手感改為 Z 軸 (前後推動)
+            if (acc.y > accelThreshold) {
+                // 正向晃動變大聲
+                currentVolume = Math.min(100, currentVolume + 5); // 每次增加 5%，最高 100
+                updateVolume();
+                lastUpdateTime = now;
+            } else if (acc.y < -accelThreshold) {
+                // 負向晃動變小聲
+                currentVolume = Math.max(0, currentVolume - 5); // 每次減少 5%，最低 0
+                updateVolume();
+                lastUpdateTime = now;
+            }
+        }
+    }
+
+    function updateVolume() {
+        if(player && typeof player.setVolume === 'function'){
+            player.setVolume(currentVolume);
+            document.getElementById('volDisplay').innerText = currentVolume;
+        }
+    }
+</script>
+</body>
+</html>
