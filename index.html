@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>體感互動 YouTube 播放器</title>
+    <title>V2 體感互動 YouTube 播放器</title>
     <style>
         :root {
             --bg-color: #f7f9fc;
@@ -25,7 +25,6 @@
             width: 100%;
             max-width: 600px;
         }
-        /* 影片容器：維持 16:9 比例 */
         .video-wrapper {
             position: relative;
             width: 100%;
@@ -43,7 +42,6 @@
             width: 100%;
             height: 100%;
         }
-        /* 控制面板 */
         .controls-card {
             background: var(--card-bg);
             padding: 20px;
@@ -82,7 +80,6 @@
             font-weight: bold;
         }
         
-        /* 數據顯示區 */
         .sensor-data {
             font-family: monospace;
             background: #eee;
@@ -96,6 +93,17 @@
             font-weight: bold;
             font-size: 1.2em;
         }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: white;
+            background-color: #95a5a6;
+            margin-left: 10px;
+        }
+        .status-active { background-color: #e74c3c; }
+        .status-returning { background-color: #f39c12; }
     </style>
 </head>
 <body>
@@ -114,7 +122,10 @@
         </div>
 
         <div class="sensor-data">
-            <div>目前音量: <span id="volDisplay" class="highlight">40</span>%</div>
+            <div>
+                目前音量: <span id="volDisplay" class="highlight">40</span>% 
+                <span id="statusIndicator" class="status-badge">預設狀態</span>
+            </div>
             <hr style="border:0; border-top:1px solid #ddd; margin: 10px 0;">
             <div>線性加速度計 (扣除重力):</div>
             <div>X 軸 (左右): <span id="accX">0.00</span></div>
@@ -125,11 +136,11 @@
 </div>
 
 <script>
-    // 1. YouTube IFrame API 初始化
+    // 1. YouTube API 及基礎變數設定
     let player;
-    let currentVolume = 40;
+    const defaultVolume = 40; // 預設音量
+    let currentVolume = defaultVolume;
     
-    // 載入 YouTube API 腳本
     const tag = document.createElement('script');
     tag.src = "https://www.youtube.com/iframe_api";
     const firstScriptTag = document.getElementsByTagName('script')[0];
@@ -139,9 +150,7 @@
         player = new YT.Player('player', {
             videoId: 'k58QQMN9DEY',
             playerVars: { 'playsinline': 1 },
-            events: {
-                'onReady': onPlayerReady
-            }
+            events: { 'onReady': onPlayerReady }
         });
     }
 
@@ -149,10 +158,8 @@
         player.setVolume(currentVolume);
     }
 
-    // 更換影片
     function loadNewVideo() {
         const url = document.getElementById('urlInput').value;
-        // 使用正則表達式擷取 YouTube Video ID
         const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
         if (match && match[1]) {
             player.loadVideoById(match[1]);
@@ -161,64 +168,98 @@
         }
     }
 
-    // 2. 感測器邏輯與權限請求
-    let lastUpdateTime = 0;
-    const updateInterval = 200; // 限制每 200 毫秒才更新一次音量，避免數值跳動過快
-    const accelThreshold = 2.0; // 觸發音量改變的加速度閾值 (m/s²)
+    // 2. 感測器與自動回復邏輯
+    let lastShakeTime = Date.now();
+    let lastShakeProcessTime = 0;
+    
+    // -- 互動參數微調區 --
+    const accelThreshold = 2.0;       // 觸發音量改變的加速度閾值 (m/s²)
+    const shakeVolumeStep = 5;        // 每次晃動增減的音量幅度
+    const shakeInterval = 200;        // 限制每 200ms 處理一次晃動，避免數值暴衝
+    const delayBeforeReturn = 1500;   // 停止晃動後，經過幾毫秒開始恢復預設音量 (1500 = 1.5秒)
+    const returnSpeed = 2;            // 恢復期間，每次調整的音量幅度
+    const returnInterval = 200;       // 恢復期間，每幾毫秒調整一次 (數值越小恢復越平滑)
+    // -------------------
 
     function requestSensorPermission() {
-        // 針對 iOS 13+ 要求使用者授權 DeviceMotion
         if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
             DeviceMotionEvent.requestPermission()
                 .then(permissionState => {
                     if (permissionState === 'granted') {
-                        window.addEventListener('devicemotion', handleMotion, true);
-                        document.getElementById('startBtn').style.display = 'none';
+                        startSensor();
                     } else {
                         alert('需要感測器權限才能使用體感功能');
                     }
                 })
                 .catch(console.error);
         } else {
-            // Android 或非 iOS 13+ 裝置
-            window.addEventListener('devicemotion', handleMotion, true);
-            document.getElementById('startBtn').style.display = 'none';
+            startSensor();
         }
         
-        // 如果影片還沒播放，順便觸發播放 (繞過手機瀏覽器的自動播放限制)
         if (player && player.getPlayerState() !== 1) {
             player.playVideo();
         }
     }
 
-    // 處理感測器數值
+    function startSensor() {
+        window.addEventListener('devicemotion', handleMotion, true);
+        document.getElementById('startBtn').style.display = 'none';
+        startVolumeRecoveryLoop(); // 啟動自動恢復音量的迴圈
+    }
+
+    // 處理手動晃動
     function handleMotion(event) {
-        // 使用 acceleration (線性加速度，已扣除重力因素)
         const acc = event.acceleration; 
         if (!acc || acc.y === null) return;
 
-        // 更新介面顯示
         document.getElementById('accX').innerText = acc.x.toFixed(2);
         document.getElementById('accY').innerText = acc.y.toFixed(2);
         document.getElementById('accZ').innerText = acc.z.toFixed(2);
 
-        // 控制音量邏輯
         const now = Date.now();
-        if (now - lastUpdateTime > updateInterval) {
-            // 這裡使用 Y 軸 (手機直立時的上下晃動) 作為判斷基準
-            // 你也可以根據實際測試手感改為 Z 軸 (前後推動)
+        let isShaking = false;
+
+        if (now - lastShakeProcessTime > shakeInterval) {
             if (acc.y > accelThreshold) {
-                // 正向晃動變大聲
-                currentVolume = Math.min(100, currentVolume + 5); // 每次增加 5%，最高 100
-                updateVolume();
-                lastUpdateTime = now;
+                currentVolume = Math.min(100, currentVolume + shakeVolumeStep);
+                isShaking = true;
             } else if (acc.y < -accelThreshold) {
-                // 負向晃動變小聲
-                currentVolume = Math.max(0, currentVolume - 5); // 每次減少 5%，最低 0
+                currentVolume = Math.max(0, currentVolume - shakeVolumeStep);
+                isShaking = true;
+            }
+
+            if (isShaking) {
                 updateVolume();
-                lastUpdateTime = now;
+                lastShakeTime = now;           // 刷新最後晃動時間
+                lastShakeProcessTime = now;
+                updateStatus('晃動控制中', 'status-active');
             }
         }
+    }
+
+    // 自動恢復 40% 音量的迴圈
+    function startVolumeRecoveryLoop() {
+        setInterval(() => {
+            const now = Date.now();
+            
+            // 如果超過設定的延遲時間沒有晃動，且音量不是預設值
+            if (now - lastShakeTime > delayBeforeReturn && currentVolume !== defaultVolume) {
+                
+                if (currentVolume > defaultVolume) {
+                    // 逐漸扣除音量，確保不會低於 40
+                    currentVolume = Math.max(defaultVolume, currentVolume - returnSpeed); 
+                } else if (currentVolume < defaultVolume) {
+                    // 逐漸增加音量，確保不會高於 40
+                    currentVolume = Math.min(defaultVolume, currentVolume + returnSpeed);
+                }
+                
+                updateVolume();
+                updateStatus('漸漸回歸中...', 'status-returning');
+                
+            } else if (currentVolume === defaultVolume && now - lastShakeTime > delayBeforeReturn) {
+                updateStatus('預設狀態', '');
+            }
+        }, returnInterval);
     }
 
     function updateVolume() {
@@ -226,6 +267,12 @@
             player.setVolume(currentVolume);
             document.getElementById('volDisplay').innerText = currentVolume;
         }
+    }
+
+    function updateStatus(text, className) {
+        const indicator = document.getElementById('statusIndicator');
+        indicator.innerText = text;
+        indicator.className = 'status-badge ' + className;
     }
 </script>
 </body>
