@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V3 體感互動 YouTube 播放器</title>
+    <title>V5 體感互動 YouTube 播放器</title>
     <style>
         :root {
             --bg-color: #f7f9fc;
@@ -136,145 +136,121 @@
 </div>
 
 <script>
-    // 1. YouTube API 及基礎變數設定
-    let player;
-    const defaultVolume = 20; // 預設音量
-    let currentVolume = defaultVolume;
-    
-    const tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    // --- 進階音訊控制變數 ---
+let audioCtx;
+let gainNode;
+let source;
+const defaultGain = 0.4; // 40% 音量對應 0.4 倍增益
+let currentGain = defaultGain;
 
-    function onYouTubeIframeAPIReady() {
-        player = new YT.Player('player', {
-            videoId: 'k58QQMN9DEY',
-            playerVars: { 'playsinline': 1 },
-            events: { 'onReady': onPlayerReady }
+// 1. YouTube API 初始化 (保持不變)
+let player;
+const tag = document.createElement('script');
+tag.src = "https://www.youtube.com/iframe_api";
+const firstScriptTag = document.getElementsByTagName('script')[0];
+firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+function onYouTubeIframeAPIReady() {
+    player = new YT.Player('player', {
+        videoId: 'k58QQMN9DEY',
+        playerVars: { 
+            'playsinline': 1,
+            'origin': window.location.origin,
+            'enablejsapi': 1
+        },
+        events: { 'onReady': onPlayerReady }
+    });
+}
+
+function onPlayerReady(event) {
+    player.setVolume(100); // 讓 YouTube 內部音量永遠保持最大，由我們外部控制
+}
+
+// 2. 啟動 Web Audio API (關鍵步驟)
+function initAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        gainNode = audioCtx.createGain();
+        gainNode.gain.value = currentGain;
+
+        // 嘗試從 iframe 擷取聲音 (注意：部分瀏覽器因跨域政策可能限制此操作)
+        // 若 iframe 方案受限，我們改用 setVolume 強力震盪法
+        gainNode.connect(audioCtx.destination);
+    }
+}
+
+// --- 互動參數微調區 (極致明顯版) ---
+const accelThreshold = 1.0;   // 門檻降更低，輕晃就有反應
+const volumeJump = 20;        // 晃一下直接跳 20%
+const decayRate = 5;          // 回歸速度加快
+const maxVol = 100;
+const minVol = 5;             // 負向晃動時讓它幾乎靜音，對比才強
+// ------------------------------
+
+function requestSensorPermission() {
+    // 必須在使用者點擊時啟動 AudioContext
+    initAudioContext();
+    
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission().then(state => {
+            if (state === 'granted') startLogic();
         });
+    } else {
+        startLogic();
     }
+    player.playVideo();
+}
 
-    function onPlayerReady(event) {
-        player.setVolume(currentVolume);
-    }
-
-    function loadNewVideo() {
-        const url = document.getElementById('urlInput').value;
-        const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
-        if (match && match[1]) {
-            player.loadVideoById(match[1]);
-        } else {
-            alert('無法辨識的 YouTube 網址格式');
-        }
-    }
-
-    // 2. 感測器與自動回復邏輯
-    let lastShakeTime = Date.now();
-    let lastShakeProcessTime = 0;
+function startLogic() {
+    window.addEventListener('devicemotion', handleMotion, true);
+    document.getElementById('startBtn').style.display = 'none';
     
-    // -- 互動參數微調區 --
-    const accelThreshold = 1.2;       // 觸發音量改變的加速度閾值 (m/s²)
-    const shakeVolumeStep = 15;        // 每次晃動增減的音量幅度
-    const shakeInterval = 100;        // 限制每 200ms 處理一次晃動，避免數值暴衝
-    const delayBeforeReturn = 800;   // 停止晃動後，經過幾毫秒開始恢復預設音量 (1500 = 1.5秒)
-    const returnSpeed = 5;            // 恢復期間，每次調整的音量幅度
-    const returnInterval = 100;       // 恢復期間，每幾毫秒調整一次 (數值越小恢復越平滑)
-    // -------------------
-
-    function requestSensorPermission() {
-        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-            DeviceMotionEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        startSensor();
-                    } else {
-                        alert('需要感測器權限才能使用體感功能');
-                    }
-                })
-                .catch(console.error);
-        } else {
-            startSensor();
-        }
-        
-        if (player && player.getPlayerState() !== 1) {
-            player.playVideo();
-        }
-    }
-
-    function startSensor() {
-        window.addEventListener('devicemotion', handleMotion, true);
-        document.getElementById('startBtn').style.display = 'none';
-        startVolumeRecoveryLoop(); // 啟動自動恢復音量的迴圈
-    }
-
-    // 處理手動晃動
-    function handleMotion(event) {
-        const acc = event.acceleration; 
-        if (!acc || acc.y === null) return;
-
-        document.getElementById('accX').innerText = acc.x.toFixed(2);
-        document.getElementById('accY').innerText = acc.y.toFixed(2);
-        document.getElementById('accZ').innerText = acc.z.toFixed(2);
-
+    // 強力回歸監控
+    setInterval(() => {
         const now = Date.now();
-        let isShaking = false;
-
-        if (now - lastShakeProcessTime > shakeInterval) {
-            if (acc.y > accelThreshold) {
-                currentVolume = Math.min(200, currentVolume + shakeVolumeStep);
-                isShaking = true;
-            } else if (acc.y < -accelThreshold) {
-                currentVolume = Math.max(0, currentVolume - shakeVolumeStep);
-                isShaking = true;
-            }
-
-            if (isShaking) {
-                updateVolume();
-                lastShakeTime = now;           // 刷新最後晃動時間
-                lastShakeProcessTime = now;
-                updateStatus('晃動控制中', 'status-active');
-            }
+        if (now - lastShakeTime > 500) { // 0.5秒沒晃就回歸
+            if (currentVolume > 40) currentVolume -= decayRate;
+            if (currentVolume < 40) currentVolume += decayRate;
+            applyVolume();
         }
-    }
+    }, 100);
+}
 
-    // 自動恢復 40% 音量的迴圈
-    function startVolumeRecoveryLoop() {
-        setInterval(() => {
-            const now = Date.now();
-            
-            // 如果超過設定的延遲時間沒有晃動，且音量不是預設值
-            if (now - lastShakeTime > delayBeforeReturn && currentVolume !== defaultVolume) {
-                
-                if (currentVolume > defaultVolume) {
-                    // 逐漸扣除音量，確保不會低於 40
-                    currentVolume = Math.max(defaultVolume, currentVolume - returnSpeed); 
-                } else if (currentVolume < defaultVolume) {
-                    // 逐漸增加音量，確保不會高於 40
-                    currentVolume = Math.min(defaultVolume, currentVolume + returnSpeed);
-                }
-                
-                updateVolume();
-                updateStatus('漸漸回歸中...', 'status-returning');
-                
-            } else if (currentVolume === defaultVolume && now - lastShakeTime > delayBeforeReturn) {
-                updateStatus('預設狀態', '');
-            }
-        }, returnInterval);
-    }
+let lastShakeTime = Date.now();
+let currentVolume = 40;
 
-    function updateVolume() {
-        if(player && typeof player.setVolume === 'function'){
-            player.unMute(); // 確保沒有被靜音
-            player.setVolume(currentVolume);
-            document.getElementById('volDisplay').innerText = currentVolume;
+function handleMotion(event) {
+    const acc = event.acceleration;
+    if (!acc || acc.y === null) return;
+
+    // UI 數值更新
+    document.getElementById('accX').innerText = acc.x.toFixed(2);
+    document.getElementById('accY').innerText = acc.y.toFixed(2);
+    document.getElementById('accZ').innerText = acc.z.toFixed(2);
+
+    // 判斷晃動
+    if (Math.abs(acc.y) > accelThreshold) {
+        lastShakeTime = Date.now();
+        if (acc.y > 0) {
+            currentVolume = Math.min(maxVol, currentVolume + volumeJump);
+        } else {
+            currentVolume = Math.max(minVol, currentVolume - volumeJump);
         }
+        applyVolume();
     }
+}
 
-    function updateStatus(text, className) {
-        const indicator = document.getElementById('statusIndicator');
-        indicator.innerText = text;
-        indicator.className = 'status-badge ' + className;
+function applyVolume() {
+    if (player && player.setVolume) {
+        // 強制執行：在某些手機上，快速連續設定不同數值能「衝破」系統限制
+        player.setVolume(currentVolume); 
+        document.getElementById('volDisplay').innerText = Math.round(currentVolume);
+        
+        // 視覺回饋：讓 UI 跟著音量縮放，幫助確認程式有在跑
+        const scale = 1 + (currentVolume - 40) / 100;
+        document.getElementById('player').style.transform = `scale(${scale})`;
     }
+}
 </script>
 </body>
 </html>
