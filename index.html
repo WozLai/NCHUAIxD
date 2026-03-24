@@ -264,14 +264,9 @@
 
     function updateVolume() {
         if(player && typeof player.setVolume === 'function'){
-            player.unMute(); // 強制解除靜音
-
-        // 核心技巧：對數映射 (讓 80% 聽起來像 100%，20% 聽起來像 5%)
-        // 這樣晃動時的「落差感」會非常巨大
-        let perceivedVolume = Math.pow(currentVolume / 100, 2) * 100;
-        
-        player.setVolume(perceivedVolume);
-        document.getElementById('volDisplay').innerText = Math.round(currentVolume);
+            player.unMute(); // 確保沒有被靜音
+            player.setVolume(currentVolume);
+            document.getElementById('volDisplay').innerText = currentVolume;
         }
     }
 
