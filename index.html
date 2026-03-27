@@ -1,226 +1,323 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>V4 電腦調試版 - 體感互動播放器</title>
     <style>
-        :root {
-            --bg-color: #f7f9fc;
-            --card-bg: #ffffff;
-            --text-main: #333333;
-            --accent: #4a90e2;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container { width: 100%; max-width: 600px; }
-        .video-wrapper {
-            position: relative;
-            width: 100%;
-            padding-bottom: 56.25%; 
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
-            transition: transform 0.1s ease-out; /* 增加視覺回饋 */
-        }
-        .video-wrapper iframe {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        }
-        .controls-card {
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
-        }
-        .input-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
-        button { background-color: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; }
-        .start-btn { width: 100%; background-color: #27ae60; margin-bottom: 20px; font-weight: bold; }
-        .sensor-data { font-family: monospace; background: #eee; padding: 15px; border-radius: 8px; font-size: 14px; line-height: 1.6; }
-        .highlight { font-weight: bold; font-size: 1.5em; transition: color 0.2s; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; color: white; background-color: #95a5a6; margin-left: 10px; }
-        .status-active { background-color: #e74c3c; }
-        .status-returning { background-color: #f39c12; }
-        .debug-hint { font-size: 12px; color: #666; margin-top: 10px; text-align: center; }
+      :root {
+        --bg-color: #f7f9fc;
+        --card-bg: #ffffff;
+        --text-main: #333333;
+        --accent: #4a90e2;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-main);
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .container {
+        width: 100%;
+        max-width: 600px;
+      }
+      .video-wrapper {
+        position: relative;
+        width: 100%;
+        padding-bottom: 56.25%;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+        transition: transform 0.1s ease-out; /* 增加視覺回饋 */
+      }
+      .video-wrapper iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .controls-card {
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        margin-bottom: 20px;
+      }
+      .input-group {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      input[type="text"] {
+        flex: 1;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 16px;
+      }
+      button {
+        background-color: var(--accent);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .start-btn {
+        width: 100%;
+        background-color: #27ae60;
+        margin-bottom: 20px;
+        font-weight: bold;
+      }
+      .sensor-data {
+        font-family: monospace;
+        background: #eee;
+        padding: 15px;
+        border-radius: 8px;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+      .highlight {
+        font-weight: bold;
+        font-size: 1.5em;
+        transition: color 0.2s;
+      }
+      .status-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        color: white;
+        background-color: #95a5a6;
+        margin-left: 10px;
+      }
+      .status-active {
+        background-color: #e74c3c;
+      }
+      .status-returning {
+        background-color: #f39c12;
+      }
+      .debug-hint {
+        font-size: 12px;
+        color: #666;
+        margin-top: 10px;
+        text-align: center;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="container">
+      <button
+        id="startBtn"
+        class="start-btn"
+        onclick="requestSensorPermission()"
+      >
+        點擊以啟用互動 (手機感測器 / 電腦鍵盤)
+      </button>
 
-<div class="container">
-    <button id="startBtn" class="start-btn" onclick="requestSensorPermission()">點擊以啟用互動 (手機感測器 / 電腦鍵盤)</button>
-
-    <div id="videoContainer" class="video-wrapper">
+      <div id="videoContainer" class="video-wrapper">
         <div id="player"></div>
-    </div>
+      </div>
 
-    <div class="controls-card">
+      <div class="controls-card">
         <div class="input-group">
-            <input type="text" id="urlInput" placeholder="貼上 YouTube 網址..." value="https://www.youtube.com/watch?v=k58QQMN9DEY">
-            <button onclick="loadNewVideo()">送出</button>
+          <input
+            type="text"
+            id="urlInput"
+            placeholder="貼上 YouTube 網址..."
+            value="https://www.youtube.com/watch?v=k58QQMN9DEY"
+          />
+          <button onclick="loadNewVideo()">送出</button>
         </div>
 
         <div class="sensor-data">
-            <div>
-                音量: <span id="volDisplay" class="highlight">5</span>% 
-                <span id="statusIndicator" class="status-badge">預設狀態</span>
-            </div>
-            <div class="debug-hint">電腦測試：按 ⬅️ 鍵變小聲 / 按 ➡️ 鍵變大聲</div>
-            <hr style="border:0; border-top:1px solid #ddd; margin: 10px 0;">
-            <div>加速度模擬數據:</div>
-            <div>X: <span id="accX">0.00</span> | Y: <span id="accY">0.00</span> | Z: <span id="accZ">0.00</span></div>
+          <div>
+            音量: <span id="volDisplay" class="highlight">5</span>%
+            <span id="statusIndicator" class="status-badge">預設狀態</span>
+          </div>
+          <div class="debug-hint">
+            電腦測試：按 ⬅️ 鍵變小聲 / 按 ➡️ 鍵變大聲
+          </div>
+          <hr style="border: 0; border-top: 1px solid #ddd; margin: 10px 0" />
+          <div>加速度模擬數據:</div>
+          <div>
+            X: <span id="accX">0.00</span> | Y: <span id="accY">0.00</span> | Z:
+            <span id="accZ">0.00</span>
+          </div>
         </div>
+      </div>
     </div>
-</div>
 
-<script>
-    let player;
-    const defaultVolume = 5; 
-    let currentVolume = defaultVolume;
-    let lastShakeTime = Date.now();
-    let lastShakeProcessTime = 0;
+    <script>
+      let player;
+      const defaultVolume = 5;
+      let currentVolume = defaultVolume;
+      let lastShakeTime = Date.now();
+      let lastShakeProcessTime = 0;
 
-    // -- 互動參數微調區 (極致明顯版) --
-    const accelThreshold = 1.0;     
-    const shakeVolumeStep = 35;      // 晃一次跳 35%，三次內滿格
-    const shakeInterval = 80;        
-    const delayBeforeReturn = 300;   // 0.3 秒沒動作就回歸，創造瞬時感
-    const returnSpeed = 8;           
-    const returnInterval = 50;       
-    // ----------------------------
+      // -- 互動參數微調區 (極致明顯版) --
+      const accelThreshold = 1.0;
+      const shakeVolumeStep = 35; // 晃一次跳 35%，三次內滿格
+      const shakeInterval = 80;
+      const delayBeforeReturn = 300; // 0.3 秒沒動作就回歸，創造瞬時感
+      const returnSpeed = 8;
+      const returnInterval = 50;
+      // ----------------------------
 
-    // 1. YouTube API
-    const tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
+      // 1. YouTube API
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
 
-    function onYouTubeIframeAPIReady() {
-        player = new YT.Player('player', {
-            videoId: 'k58QQMN9DEY',
-            playerVars: { 'playsinline': 1, 'enablejsapi': 1 },
-            events: { 'onReady': () => player.setVolume(currentVolume) }
+      function onYouTubeIframeAPIReady() {
+        player = new YT.Player("player", {
+          videoId: "k58QQMN9DEY",
+          playerVars: { playsinline: 1, enablejsapi: 1 },
+          events: { onReady: () => player.setVolume(currentVolume) },
         });
-    }
+      }
 
-    function loadNewVideo() {
-        const url = document.getElementById('urlInput').value;
-        const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+      function loadNewVideo() {
+        const url = document.getElementById("urlInput").value;
+        const match = url.match(
+          /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/,
+        );
         if (match) player.loadVideoById(match[1]);
-    }
+      }
 
-    // 2. 核心功能函式：音量更新與非線性映射
-    function updateVolume() {
-        if(player && typeof player.setVolume === 'function'){
-            // 突破限制 1：平方映射。讓 50% 聽起來像 25%，100% 維持 100%。對比感極強！
-            let perceivedVolume = Math.pow(currentVolume / 100, 2) * 100;
+      // 2. 核心功能函式：音量更新與非線性映射
+      function updateVolume() {
+        if (player && typeof player.setVolume === "function") {
+          // 突破限制 1：平方映射。讓 50% 聽起來像 25%，100% 維持 100%。對比感極強！
+          let perceivedVolume = Math.pow(currentVolume / 100, 2) * 100;
 
-            // 突破限制 2：邊界強制靜音。低於 15% 直接斷音，製造驚人的落差
-            if (currentVolume < 15) {
-                player.mute();
-            } else {
-                player.unMute();
-                player.setVolume(perceivedVolume);
-            }
+          // 突破限制 2：邊界強制靜音。低於 15% 直接斷音，製造驚人的落差
+          if (currentVolume < 15) {
+            player.mute();
+          } else {
+            player.unMute();
+            player.setVolume(perceivedVolume);
+          }
 
-            // UI 更新
-            const display = document.getElementById('volDisplay');
-            display.innerText = Math.round(currentVolume);
-            
-            // 視覺補償：顏色變紅且影片微幅跳動
-            const red = Math.min(255, (currentVolume / 100) * 255);
-            display.style.color = `rgb(${red}, 50, 50)`;
-            const scale = 1 + (currentVolume - defaultVolume) / 500;
-            document.getElementById('videoContainer').style.transform = `scale(${scale})`;
+          // UI 更新
+          const display = document.getElementById("volDisplay");
+          display.innerText = Math.round(currentVolume);
+
+          // 視覺補償：顏色變紅且影片微幅跳動
+          const red = Math.min(255, (currentVolume / 100) * 255);
+          display.style.color = `rgb(${red}, 50, 50)`;
+          const scale = 1 + (currentVolume - defaultVolume) / 500;
+          document.getElementById("videoContainer").style.transform =
+            `scale(${scale})`;
         }
-    }
+      }
 
-    // 3. 電腦測試功能：鍵盤監聽
-    function handleKeyboardDebug(event) {
+      // 3. 電腦測試功能：鍵盤監聽
+      function handleKeyboardDebug(event) {
         let isSimulatedShake = false;
-        if (event.key === "ArrowRight") { // 右鍵模擬正向晃動
-            currentVolume = Math.min(100, currentVolume + shakeVolumeStep);
-            document.getElementById('accY').innerText = "10.00 (模擬)";
-            isSimulatedShake = true;
-        } else if (event.key === "ArrowLeft") { // 左鍵模擬負向晃動
-            currentVolume = Math.max(0, currentVolume - shakeVolumeStep);
-            document.getElementById('accY').innerText = "-10.00 (模擬)";
-            isSimulatedShake = true;
+        if (event.key === "ArrowRight") {
+          // 右鍵模擬正向晃動
+          currentVolume = Math.min(100, currentVolume + shakeVolumeStep);
+          document.getElementById("accY").innerText = "10.00 (模擬)";
+          isSimulatedShake = true;
+        } else if (event.key === "ArrowLeft") {
+          // 左鍵模擬負向晃動
+          currentVolume = Math.max(0, currentVolume - shakeVolumeStep);
+          document.getElementById("accY").innerText = "-10.00 (模擬)";
+          isSimulatedShake = true;
         }
 
         if (isSimulatedShake) {
-            lastShakeTime = Date.now();
-            updateVolume();
-            updateStatus('鍵盤模擬中', 'status-active');
+          lastShakeTime = Date.now();
+          updateVolume();
+          updateStatus("鍵盤模擬中", "status-active");
         }
-    }
+      }
 
-    // 4. 感測器啟動
-    function requestSensorPermission() {
+      // 4. 感測器啟動
+      function requestSensorPermission() {
         // 啟動鍵盤監聽
-        window.addEventListener('keydown', handleKeyboardDebug);
+        window.addEventListener("keydown", handleKeyboardDebug);
 
-        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-            DeviceMotionEvent.requestPermission().then(state => {
-                if (state === 'granted') startLogic();
-            });
+        if (
+          typeof DeviceMotionEvent !== "undefined" &&
+          typeof DeviceMotionEvent.requestPermission === "function"
+        ) {
+          DeviceMotionEvent.requestPermission().then((state) => {
+            if (state === "granted") startLogic();
+          });
         } else {
-            startLogic();
+          startLogic();
         }
         player.playVideo();
-    }
+      }
 
-    function startLogic() {
-        window.addEventListener('devicemotion', handleMotion, true);
-        document.getElementById('startBtn').style.display = 'none';
-        
+      function startLogic() {
+        window.addEventListener("devicemotion", handleMotion, true);
+        document.getElementById("startBtn").style.display = "none";
+
         // 回歸計時器
         setInterval(() => {
-            const now = Date.now();
-            if (now - lastShakeTime > delayBeforeReturn && currentVolume !== defaultVolume) {
-                if (currentVolume > defaultVolume) currentVolume = Math.max(defaultVolume, currentVolume - returnSpeed);
-                else currentVolume = Math.min(defaultVolume, currentVolume + returnSpeed);
-                updateVolume();
-                updateStatus('回歸預設中', 'status-returning');
-            } else if (currentVolume === defaultVolume) {
-                updateStatus('預設狀態', '');
-            }
+          const now = Date.now();
+          if (
+            now - lastShakeTime > delayBeforeReturn &&
+            currentVolume !== defaultVolume
+          ) {
+            if (currentVolume > defaultVolume)
+              currentVolume = Math.max(
+                defaultVolume,
+                currentVolume - returnSpeed,
+              );
+            else
+              currentVolume = Math.min(
+                defaultVolume,
+                currentVolume + returnSpeed,
+              );
+            updateVolume();
+            updateStatus("回歸預設中", "status-returning");
+          } else if (currentVolume === defaultVolume) {
+            updateStatus("預設狀態", "");
+          }
         }, returnInterval);
-    }
+      }
 
-    function handleMotion(event) {
+      function handleMotion(event) {
         const acc = event.acceleration;
         if (!acc || acc.y === null) return;
-        document.getElementById('accX').innerText = acc.x.toFixed(2);
-        document.getElementById('accY').innerText = acc.y.toFixed(2);
-        document.getElementById('accZ').innerText = acc.z.toFixed(2);
+        document.getElementById("accX").innerText = acc.x.toFixed(2);
+        document.getElementById("accY").innerText = acc.y.toFixed(2);
+        document.getElementById("accZ").innerText = acc.z.toFixed(2);
 
         const now = Date.now();
         if (now - lastShakeProcessTime > shakeInterval) {
-            if (Math.abs(acc.y) > accelThreshold) {
-                currentVolume = acc.y > 0 ? Math.min(100, currentVolume + shakeVolumeStep) : Math.max(0, currentVolume - shakeVolumeStep);
-                updateVolume();
-                lastShakeTime = now;
-                lastShakeProcessTime = now;
-                updateStatus('晃動中', 'status-active');
-            }
+          if (Math.abs(acc.y) > accelThreshold) {
+            currentVolume =
+              acc.y > 0
+                ? Math.min(100, currentVolume + shakeVolumeStep)
+                : Math.max(0, currentVolume - shakeVolumeStep);
+            updateVolume();
+            lastShakeTime = now;
+            lastShakeProcessTime = now;
+            updateStatus("晃動中", "status-active");
+          }
         }
-    }
+      }
 
-    function updateStatus(text, className) {
-        const indicator = document.getElementById('statusIndicator');
+      function updateStatus(text, className) {
+        const indicator = document.getElementById("statusIndicator");
         indicator.innerText = text;
-        indicator.className = 'status-badge ' + className;
-    }
-</script>
-</body>
+        indicator.className = "status-badge " + className;
+      }
+    </script>
+  </body>
 </html>
