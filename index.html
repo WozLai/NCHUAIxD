@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>V6 體感互動播放器 (含速度控制)</title>
+    <title>V7 體感互動播放器 (含速度控制)</title>
     <style>
       :root {
         --bg-color: #f7f9fc;
@@ -172,7 +172,7 @@
       let lastShakeProcessTime = 0;
 
       // -- 互動參數微調區 --
-      const accelThreshold = 1.5;
+      const accelThreshold = 1.0;
       const shakeVolumeStep = 35;
       const shakeSpeedStep = 0.25; // 每次晃動增加/減少 0.25 倍速
       const shakeInterval = 160;
