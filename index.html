@@ -126,7 +126,7 @@
 
             // 突破限制 2：邊界強制靜音。低於 15% 直接斷音，製造驚人的落差
             if (currentVolume < 15) {
-                // player.mute();
+                player.mute();
             } else {
                 player.unMute();
                 player.setVolume(perceivedVolume);
