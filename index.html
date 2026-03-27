@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>V4 電腦調試版 - 體感互動播放器</title>
+    <title>V5 體感互動播放器 (含速度控制)</title>
     <style>
       :root {
         --bg-color: #f7f9fc;
@@ -36,7 +36,7 @@
         overflow: hidden;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         margin-bottom: 20px;
-        transition: transform 0.1s ease-out; /* 增加視覺回饋 */
+        transition: transform 0.1s ease-out;
       }
       .video-wrapper iframe {
         position: absolute;
@@ -142,11 +142,12 @@
 
         <div class="sensor-data">
           <div>
-            音量: <span id="volDisplay" class="highlight">5</span>%
+            音量: <span id="volDisplay" class="highlight">5</span>% | 速度:
+            <span id="speedDisplay" class="highlight">1.0</span>x
             <span id="statusIndicator" class="status-badge">預設狀態</span>
           </div>
           <div class="debug-hint">
-            電腦測試：按 ⬅️ 鍵變小聲 / 按 ➡️ 鍵變大聲
+            電腦測試：按 ⬅️ 鍵變小聲減速 / 按 ➡️ 鍵變大聲加速
           </div>
           <hr style="border: 0; border-top: 1px solid #ddd; margin: 10px 0" />
           <div>加速度模擬數據:</div>
@@ -160,17 +161,26 @@
 
     <script>
       let player;
+
+      // 狀態變數：音量與速度
       const defaultVolume = 5;
       let currentVolume = defaultVolume;
+      const defaultSpeed = 1.0;
+      let currentSpeed = defaultSpeed;
+
       let lastShakeTime = Date.now();
       let lastShakeProcessTime = 0;
 
-      // -- 互動參數微調區 (極致明顯版) --
+      // -- 互動參數微調區 --
       const accelThreshold = 1.0;
-      const shakeVolumeStep = 35; // 晃一次跳 35%，三次內滿格
+      const shakeVolumeStep = 35;
+      const shakeSpeedStep = 0.25; // 每次晃動增加/減少 0.25 倍速
       const shakeInterval = 80;
-      const delayBeforeReturn = 300; // 0.3 秒沒動作就回歸，創造瞬時感
-      const returnSpeed = 8;
+      const delayBeforeReturn = 300;
+
+      // 回歸速度控制
+      const returnVolSpeed = 8; // 音量回歸步伐
+      const returnRateSpeed = 0.05; // 播放速度回歸步伐 (平滑降速)
       const returnInterval = 50;
       // ----------------------------
 
@@ -183,7 +193,12 @@
         player = new YT.Player("player", {
           videoId: "k58QQMN9DEY",
           playerVars: { playsinline: 1, enablejsapi: 1 },
-          events: { onReady: () => player.setVolume(currentVolume) },
+          events: {
+            onReady: () => {
+              player.setVolume(currentVolume);
+              player.setPlaybackRate(currentSpeed);
+            },
+          },
         });
       }
 
@@ -195,13 +210,11 @@
         if (match) player.loadVideoById(match[1]);
       }
 
-      // 2. 核心功能函式：音量更新與非線性映射
-      function updateVolume() {
+      // 2. 核心更新函式
+      function updateVolumeAndSpeed() {
         if (player && typeof player.setVolume === "function") {
-          // 突破限制 1：平方映射。讓 50% 聽起來像 25%，100% 維持 100%。對比感極強！
+          // 更新音量 (含平方映射邏輯)
           let perceivedVolume = Math.pow(currentVolume / 100, 2) * 100;
-
-          // 突破限制 2：邊界強制靜音。低於 15% 直接斷音，製造驚人的落差
           if (currentVolume < 15) {
             player.mute();
           } else {
@@ -209,11 +222,17 @@
             player.setVolume(perceivedVolume);
           }
 
-          // UI 更新
+          // 更新播放速度
+          if (typeof player.setPlaybackRate === "function") {
+            player.setPlaybackRate(currentSpeed);
+          }
+
+          // UI 視覺更新
           const display = document.getElementById("volDisplay");
           display.innerText = Math.round(currentVolume);
+          document.getElementById("speedDisplay").innerText =
+            currentSpeed.toFixed(2);
 
-          // 視覺補償：顏色變紅且影片微幅跳動
           const red = Math.min(255, (currentVolume / 100) * 255);
           display.style.color = `rgb(${red}, 50, 50)`;
           const scale = 1 + (currentVolume - defaultVolume) / 500;
@@ -226,27 +245,26 @@
       function handleKeyboardDebug(event) {
         let isSimulatedShake = false;
         if (event.key === "ArrowRight") {
-          // 右鍵模擬正向晃動
           currentVolume = Math.min(100, currentVolume + shakeVolumeStep);
+          currentSpeed = Math.min(2.0, currentSpeed + shakeSpeedStep); // 最高 2.0 倍速
           document.getElementById("accY").innerText = "10.00 (模擬)";
           isSimulatedShake = true;
         } else if (event.key === "ArrowLeft") {
-          // 左鍵模擬負向晃動
           currentVolume = Math.max(0, currentVolume - shakeVolumeStep);
+          currentSpeed = Math.max(0.25, currentSpeed - shakeSpeedStep); // 最低 0.25 倍速
           document.getElementById("accY").innerText = "-10.00 (模擬)";
           isSimulatedShake = true;
         }
 
         if (isSimulatedShake) {
           lastShakeTime = Date.now();
-          updateVolume();
+          updateVolumeAndSpeed();
           updateStatus("鍵盤模擬中", "status-active");
         }
       }
 
-      // 4. 感測器啟動
+      // 4. 感測器啟動與回歸邏輯
       function requestSensorPermission() {
-        // 啟動鍵盤監聽
         window.addEventListener("keydown", handleKeyboardDebug);
 
         if (
@@ -266,27 +284,53 @@
         window.addEventListener("devicemotion", handleMotion, true);
         document.getElementById("startBtn").style.display = "none";
 
-        // 回歸計時器
+        // 狀態回歸計時器 (同時處理音量與速度)
         setInterval(() => {
           const now = Date.now();
-          if (
-            now - lastShakeTime > delayBeforeReturn &&
-            currentVolume !== defaultVolume
-          ) {
-            if (currentVolume > defaultVolume)
+          if (now - lastShakeTime > delayBeforeReturn) {
+            let isReturning = false;
+
+            // 回歸音量
+            if (currentVolume > defaultVolume) {
               currentVolume = Math.max(
                 defaultVolume,
-                currentVolume - returnSpeed,
+                currentVolume - returnVolSpeed,
               );
-            else
+              isReturning = true;
+            } else if (currentVolume < defaultVolume) {
               currentVolume = Math.min(
                 defaultVolume,
-                currentVolume + returnSpeed,
+                currentVolume + returnVolSpeed,
               );
-            updateVolume();
-            updateStatus("回歸預設中", "status-returning");
-          } else if (currentVolume === defaultVolume) {
-            updateStatus("預設狀態", "");
+              isReturning = true;
+            }
+
+            // 回歸速度
+            if (currentSpeed > defaultSpeed) {
+              currentSpeed = Math.max(
+                defaultSpeed,
+                currentSpeed - returnRateSpeed,
+              );
+              isReturning = true;
+            } else if (currentSpeed < defaultSpeed) {
+              currentSpeed = Math.min(
+                defaultSpeed,
+                currentSpeed + returnRateSpeed,
+              );
+              isReturning = true;
+            }
+
+            if (isReturning) {
+              // 修正 JavaScript 浮點數誤差
+              currentSpeed = Math.round(currentSpeed * 100) / 100;
+              updateVolumeAndSpeed();
+              updateStatus("回歸預設中", "status-returning");
+            } else if (
+              currentVolume === defaultVolume &&
+              currentSpeed === defaultSpeed
+            ) {
+              updateStatus("預設狀態", "");
+            }
           }
         }, returnInterval);
       }
@@ -301,11 +345,14 @@
         const now = Date.now();
         if (now - lastShakeProcessTime > shakeInterval) {
           if (Math.abs(acc.y) > accelThreshold) {
-            currentVolume =
-              acc.y > 0
-                ? Math.min(100, currentVolume + shakeVolumeStep)
-                : Math.max(0, currentVolume - shakeVolumeStep);
-            updateVolume();
+            if (acc.y > 0) {
+              currentVolume = Math.min(100, currentVolume + shakeVolumeStep);
+              currentSpeed = Math.min(2.0, currentSpeed + shakeSpeedStep);
+            } else {
+              currentVolume = Math.max(0, currentVolume - shakeVolumeStep);
+              currentSpeed = Math.max(0.25, currentSpeed - shakeSpeedStep);
+            }
+            updateVolumeAndSpeed();
             lastShakeTime = now;
             lastShakeProcessTime = now;
             updateStatus("晃動中", "status-active");
