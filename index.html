@@ -216,7 +216,7 @@
           // 更新音量 (含平方映射邏輯)
           let perceivedVolume = Math.pow(currentVolume / 100, 2) * 100;
           if (currentVolume < 15) {
-            player.mute();
+            // player.mute();
           } else {
             player.unMute();
             player.setVolume(perceivedVolume);
