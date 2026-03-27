@@ -172,16 +172,16 @@
       let lastShakeProcessTime = 0;
 
       // -- 互動參數微調區 --
-      const accelThreshold = 1.0;
+      const accelThreshold = 1.5;
       const shakeVolumeStep = 35;
-      const shakeSpeedStep = 0.25; // 每次晃動增加/減少 0.25 倍速
-      const shakeInterval = 80;
+      const shakeSpeedStep = 0.15; // 每次晃動增加/減少 0.25 倍速
+      const shakeInterval = 160;
       const delayBeforeReturn = 300;
 
       // 回歸速度控制
       const returnVolSpeed = 8; // 音量回歸步伐
       const returnRateSpeed = 0.05; // 播放速度回歸步伐 (平滑降速)
-      const returnInterval = 50;
+      const returnInterval = 100;
       // ----------------------------
 
       // 1. YouTube API
